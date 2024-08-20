@@ -34,5 +34,6 @@ export class Otp extends Model<Otp, IOtpCreationAttr> {
   @Column({
     type: DataType.STRING,
   })
+  // sad
   check: string;
 }
