@@ -8,7 +8,7 @@ interface IOtpCreationAttr {
   check: string;
 }
 
-@Table({ tableName: 'otp' })
+@Table({tableName: 'otp' })
 export class Otp extends Model<Otp, IOtpCreationAttr> {
   @Column({
     type: DataType.STRING,

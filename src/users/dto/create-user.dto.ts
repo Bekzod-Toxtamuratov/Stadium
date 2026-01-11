@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
-  IsDateString,
   IsEmail,
   IsNotEmpty,
   IsPhoneNumber,
@@ -22,7 +21,7 @@ export class CreateUserDto {
     description: 'Foydalanuvchi phone',
   })
   @IsPhoneNumber('UZ')
-  phone: string;
+  phone_number: string;
 
   @ApiProperty({
     example: 'example email',

@@ -1,9 +1,7 @@
+import { IsNotEmpty } from 'class-validator';
 
-
-
-import { IsPhoneNumber } from "class-validator";
-export class PhoneUserDto{
-
-      @IsPhoneNumber("UZ")
-      phone: string;
+export class PhoneUserDto {
+  // @IsPhoneNumber("UZ")
+  @IsNotEmpty()
+  phone_number: string;
 }

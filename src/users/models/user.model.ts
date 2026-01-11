@@ -38,7 +38,7 @@ export class User extends Model<User, IUserCreationAttr> {
   @Column({
     type: DataType.STRING,
   })
-  phone: string;
+  phone_number: string;
 
   @ApiProperty({
     example: 'bekzodtoxtamuratov01@gmail.com',

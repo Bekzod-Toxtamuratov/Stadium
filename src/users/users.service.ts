@@ -2,32 +2,29 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
-  InternalServerErrorException,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
-import { InjectModel } from '@nestjs/sequelize';
-import { User } from './models/user.model';
 import { JwtService } from '@nestjs/jwt';
-import { Op } from 'sequelize';
+import { InjectModel } from '@nestjs/sequelize';
 import * as bcrypt from 'bcrypt';
-import { v4 } from 'uuid';
 import { Response } from 'express';
+import { Op } from 'sequelize';
+import { v4 } from 'uuid';
 import { MailService } from '../mail/mail.service';
-import { LoginUserDto } from './dto/login_user.dto';
+import { CreateUserDto } from './dto/create-user.dto';
 import { FindeUserDto } from './dto/find-user.dto';
+import { LoginUserDto } from './dto/login_user.dto';
 import { PhoneUserDto } from './dto/phone-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { User } from './models/user.model';
 
 import * as otpGenerator from 'otp-generator';
 import { BotService } from '../bot/bot.service';
-import { Otp } from '../otp/model/otp.model';
 import { AddMinutesToDate } from '../helpers/addMinutes';
 import { dates, decode, encode } from '../helpers/crypto';
-import { Json } from 'sequelize/types/utils';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { Otp } from '../otp/model/otp.model';
 import { SmsService } from '../sms/sms.service';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
 
 @Injectable()
 export class UsersService {
@@ -253,7 +250,7 @@ export class UsersService {
   // **********************NewOTP bilan shug'ullanamiz siz bilan;
 
   async newOTP(phoneUserDto: PhoneUserDto) {
-    const phone_number = phoneUserDto.phone;
+    const phone_number = phoneUserDto.phone_number;
     console.log('phone_number ::: ', phone_number);
     const otp = otpGenerator.generate(4, {
       upperCaseAlphabets: false,
@@ -261,19 +258,16 @@ export class UsersService {
       lowerCaseAlphabets: false,
     });
     console.log('otp ', otp);
-
     const isSend = await this.botService.sendOtp(phone_number, otp);
-
     if (!isSend) {
       throw new BadRequestException(`avval botdan ro'yhatdan o'ting`);
     }
 
-    const resp = await this.smsService.sendSms(phone_number,otp);
+    // const resp = await this.smsService.sendSms(phone_number, otp);
 
-    if (resp.status!==200)
-    {
-       throw new ServiceUnavailableException('OTP yuborishda xatolik');
-    }
+    // if (resp.status !== 200) {
+    //   throw new ServiceUnavailableException('OTP yuborishda xatolik');
+    // }
 
     const message =
       'Code has been sent to ***' + phone_number.slice(phone_number.length - 4);
@@ -300,58 +294,85 @@ export class UsersService {
     return { status: 'succes', details: encoded, message };
   }
   // this method verifiOtp methos all the world
-  async verifyOtp(veriFyOtpDto: VerifyOtpDto) {
-    const { verification_key, otp, check } = veriFyOtpDto;
+  async verifyOtp(verifyOtpDto: VerifyOtpDto) {
+    const { verification_key, otp, check } = verifyOtpDto;
+
+    // 1️⃣ KIRUVCHI MAʼLUMOTLARNI TEKSHIRISH
+    if (!verification_key) {
+      throw new BadRequestException('verification_key yuborilmadi');
+    }
+
+    if (!otp) {
+      throw new BadRequestException('OTP yuborilmadi');
+    }
+
+    if (!check) {
+      throw new BadRequestException('Telefon raqam yuborilmadi');
+    }
+
     const currentDate = new Date();
-    const decoded = await decode(verification_key);
-    const details = JSON.parse(decoded);
 
-    console.log('deteils', details);
+    // 2️⃣ VERIFICATION KEY NI DECODE QILISH
+    let details: any;
+    try {
+      const decoded = await decode(verification_key); // ✅ await
+      details = JSON.parse(decoded);
+    } catch (error) {
+      throw new BadRequestException('verification_key noto‘g‘ri yoki buzilgan');
+    }
 
-    if (details.check != check) {
+    // 3️⃣ CHECK TEKSHIRISH
+    if (details.check !== check) {
       throw new BadRequestException('OTP bu raqamga yuborilmagan');
     }
 
+    // 4️⃣ OTP NI DATABASE DAN TOPISH
     const resultOtp = await this.otpRepo.findOne({
       where: { id: details.otp_id },
     });
 
-    console.log('resultOtp', resultOtp);
-
-    if (resultOtp == null) {
-      throw new BadRequestException('bunday otp yoq');
+    if (!resultOtp) {
+      throw new BadRequestException('Bunday OTP mavjud emas');
     }
+
+    // 5️⃣ OTP HOLATLARINI TEKSHIRISH
     if (resultOtp.verified) {
       throw new BadRequestException('Bu OTP allaqachon tekshirilgan');
     }
+
     if (!dates.compare(resultOtp.expiration_time, currentDate)) {
       throw new BadRequestException('OTP vaqti tugagan');
     }
+
     if (otp !== resultOtp.otp) {
       throw new BadRequestException('OTP mos emas');
     }
+
+    // 6️⃣ USERNI OWNER QILISH
     const user = await this.userRepo.update(
+      { is_owner: true },
       {
-        is_owner: true,
-      },
-      {
-        where: { phone: check },
+        where: { phone_number: check },
         returning: true,
       },
     );
+    console.log('user ', user);
+
     if (!user[1][0]) {
-      throw new BadRequestException('Bunday foydalanuvchi yoq');
+      throw new BadRequestException('Bunday foydalanuvchi yo‘q  11');
     }
+
+    // 7️⃣ OTP NI VERIFIED QILISH
     await this.otpRepo.update(
       { verified: true },
       { where: { id: details.otp_id } },
     );
 
-    const response = {
-      message: 'siz owner boldingiz ',
+    // 8️⃣ RESPONSE
+    return {
+      message: 'Siz owner bo‘ldingiz',
       user: user[1][0],
     };
-    return response;
   }
 
   // ***********************CRUD BU YERDA *****************************************************8
